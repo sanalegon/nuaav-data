@@ -170,14 +170,45 @@ export SNOWFLAKE_PASSWORD=your-password
 dbt debug
 ```
 
-#### 4. Load Seed Data (Raw Files)
+#### 4. Set Up Snowflake Raw Landing Zone
+Before running dbt, you must manually execute the Snowflake DDL scripts to create the raw landing zone schema, external stages, and file formats.
+
+**Files to execute** (in order):
+
+1. **[snowflake/ddl/00_setup.sql](snowflake/ddl/00_setup.sql)** — Creates the database, warehouse, and schemas
+2. **[snowflake/ddl/01_raw_landing.sql](snowflake/ddl/01_raw_landing.sql)** — Creates file formats, external S3 stages, and raw tables
+
+**How to execute:**
+- Copy each SQL file's contents
+- Log into your Snowflake console (or use SnowSQL)
+- Paste and run the queries in order
+- **Important**: Update the S3 bucket path and AWS credentials in `01_raw_landing.sql` before running
+
+**S3 Setup:**
+1. Create an AWS S3 bucket (or use an existing one)
+2. Create a folder structure: `[YOUR-BUCKET-NAME]/nuaav/input_data/`
+3. **Copy the local `input_data/` folder contents** into `s3://[YOUR-BUCKET-NAME]/nuaav/input_data/`
+   - All XML files, CSV files, JSON files, and subdirectories go here
+   - The S3 path will be referenced by the external stage in `01_raw_landing.sql`
+
+**AWS Credentials:**
+Update the placeholders in `01_raw_landing.sql`:
+```sql
+CREDENTIALS = (
+    AWS_KEY_ID = 'your-actual-aws-key',
+    AWS_SECRET_KEY = 'your-actual-aws-secret'
+)
+```
+Or use Snowflake Secrets for secure credential management.
+
+#### 5. Load Seed Data (Raw Files)
 ```bash
 dbt seed
 ```
 
 This loads data from `input_data/` into Snowflake RAW schema.
 
-#### 5. Run dbt Models
+#### 6. Run dbt Models
 ```bash
 # Build all models (staging + marts)
 dbt build
@@ -191,7 +222,7 @@ dbt build --select fact_orders        # Specific model
 dbt build --select tag:fact           # By tag
 ```
 
-#### 6. View Results
+#### 7. View Results
 ```bash
 # Preview staging layer
 dbt show --select stg_transactions --limit 10
