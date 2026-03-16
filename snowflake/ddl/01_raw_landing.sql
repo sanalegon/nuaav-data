@@ -40,6 +40,38 @@ CREATE OR REPLACE FILE FORMAT NUAAV_DW.RAW.XML_FORMAT
 -- ===========================================================================
 -- AWS CREDENTIALS (set via environment variables or Snowflake secrets)
 -- ===========================================================================
+-- IMPORTANT: Before using the external stages below, you must:
+--
+-- 1. CREATE AN IAM ROLE in AWS that allows Snowflake to access your S3 bucket:
+--    a) Go to AWS IAM → Roles → Create Role
+--    b) Select "Snowflake" as the trusted entity
+--    c) Attach a policy allowing s3:GetObject and s3:ListBucket on your bucket:
+--       {
+--         "Version": "2012-10-17",
+--         "Statement": [
+--           {
+--             "Effect": "Allow",
+--             "Action": [
+--               "s3:GetObject",
+--               "s3:ListBucket"
+--             ],
+--             "Resource": [
+--               "arn:aws:s3:::YOUR-BUCKET-NAME",
+--               "arn:aws:s3:::YOUR-BUCKET-NAME/*"
+--             ]
+--           }
+--         ]
+--       }
+--    d) Copy the IAM Role ARN (arn:aws:iam::ACCOUNT:role/snowflake-access-role)
+--
+-- 2. Option A (Recommended): Use AWS_ROLE with Snowflake integration
+--    Replace AWS_ROLE_ARN below with your IAM role ARN
+--
+-- 3. Option B (Fallback): Use AWS Access Key ID and Secret Access Key
+--    a) Create an IAM user with S3 access permissions
+--    b) Generate access keys in AWS IAM
+--    c) Replace the placeholder values below
+--
 -- Option 1 (Environment Variables - RECOMMENDED):
 --   Before running this script, set:
 --   export SNOWFLAKE_AWS_ACCESS_KEY_ID="your-access-key"
@@ -52,7 +84,7 @@ CREATE OR REPLACE FILE FORMAT NUAAV_DW.RAW.XML_FORMAT
 -- EXTERNAL STAGES  (S3 bucket)
 -- ===========================================================================
 CREATE OR REPLACE STAGE NUAAV_DW.RAW.STAGE_CLIENT_A
-    URL = 's3://general-purpose-datalake/nuaav/input_data/'
+    URL = 's3://[YOUR-BUCKET-NAME]/nuaav/input_data/'
     CREDENTIALS = (
         AWS_KEY_ID = 'access_key_placeholder',  
         AWS_SECRET_KEY = 'secret_key_placeholder'
@@ -60,7 +92,7 @@ CREATE OR REPLACE STAGE NUAAV_DW.RAW.STAGE_CLIENT_A
     COMMENT = 'External S3 stage for Client A source files';
 
 CREATE OR REPLACE STAGE NUAAV_DW.RAW.STAGE_CLIENT_C
-    URL = 's3://general-purpose-datalake/nuaav/input_data/'
+    URL = 's3://[YOUR-BUCKET-NAME]/nuaav/input_data/'
     CREDENTIALS = (
         AWS_KEY_ID = 'access_key_placeholder',
         AWS_SECRET_KEY = 'secret_key_placeholder'
