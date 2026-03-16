@@ -1,3 +1,7 @@
+# Root markdown files (temp notes, summaries) — but keep README
+/*.md
+!README.md
+
 # dbt artifacts and build outputs
 dbt/target/
 dbt/dbt_packages/
