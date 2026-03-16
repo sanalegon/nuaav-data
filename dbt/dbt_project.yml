@@ -37,27 +37,3 @@ models:
 
       facts:
         +tags: ['fact', 'marts']
-
-# ---------------------------------------------------------------------------
-# Seed configurations
-# ---------------------------------------------------------------------------
-seeds:
-  nuaav_dw:
-    +schema: raw
-    +quote_columns: false
-    +on_schema_change: 'sync_all_columns'
-
-    client_a:
-      +tags: ['client_a', 'seed']
-      +column_types:
-        customer_id:   varchar
-        order_id:      varchar
-        sku:           varchar
-
-    client_c:
-      +tags: ['client_c', 'seed']
-      +column_types:
-        customer_id:   varchar
-        order_id:      varchar
-        payment_id:    varchar
-        sku:           varchar
