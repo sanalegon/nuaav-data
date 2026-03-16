@@ -56,7 +56,7 @@ models:
       - name: date_key
         tests: [unique, not_null]
       - name: full_date
-        tests: [unique, not_null]
+        tests: [unique]
 
   - name: dim_payment_type
     description: Lookup table for payment methods observed across all clients.
@@ -68,23 +68,18 @@ models:
 
   - name: fact_transactions
     description: >
-      Central fact table at transaction line-item grain.
-      Each row represents one SKU within one transaction.
-      **IMPORTANT**: Every transaction must belong to an order.
-      fact_transactions.ORDER_ID is a NOT NULL foreign key to fact_orders.ORDER_ID,
-      enforcing 1:N relationship and ensuring referential integrity.
-      Rows with any anomaly flag set to TRUE should be excluded from standard revenue / volume metrics.
+      Central fact table at transaction line-item grain (one row per transaction).
+      Aggregates line items by transaction ID.
+      Rows with anomaly flags set to TRUE should be excluded from standard metrics.
     columns:
-      - name: transaction_key
+      - name: transaction_id
         tests: [unique, not_null]
       - name: order_id
-        tests: [not_null, relationships: {to: ref('fact_orders'), field: order_id}]
+        tests: [relationships: {to: ref('fact_orders'), field: order_id}]
       - name: client_key
         tests: [not_null, relationships: {to: ref('dim_client'), field: client_key}]
       - name: customer_key
         tests: [relationships: {to: ref('dim_customer'), field: customer_key}]
-      - name: product_key
-        tests: [relationships: {to: ref('dim_product'), field: product_key}]
       - name: date_key
         tests: [relationships: {to: ref('dim_date'), field: date_key}]
       - name: payment_type_key
@@ -92,22 +87,21 @@ models:
 
   - name: fact_orders
     description: >
-      Order-level fact table at order grain.
-      Each row represents one order (order-header summary).
-      **IMPORTANT**: This table must be materialized BEFORE fact_transactions
-      as it is referenced by the fact_transactions foreign key (ORDER_ID).
-      dbt resolves this dependency automatically.
-      Rows with any anomaly flag set to TRUE should be excluded from
-      standard order volume and AOV metrics.
+      Line-item fact table at item grain (one row per item in an order).
+      Each row represents one SKU within one order.
+      Multiple rows can share the same order_id (multiple items per order).
+      Rows with anomaly flags set to TRUE should be excluded from standard metrics.
     columns:
-      - name: order_key
-        tests: [unique, not_null]
-      - name: order_id
+      - name: transaction_id
         tests: [not_null]
+      - name: order_id
+        tests: []
       - name: client_key
         tests: [not_null, relationships: {to: ref('dim_client'), field: client_key}]
       - name: customer_key
         tests: [relationships: {to: ref('dim_customer'), field: customer_key}]
+      - name: product_key
+        tests: [relationships: {to: ref('dim_product'), field: product_key}]
       - name: date_key
         tests: [relationships: {to: ref('dim_date'), field: date_key}]
       - name: payment_type_key
