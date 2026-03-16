@@ -1,0 +1,31 @@
+Role: Act as a senior data engineer developer who riste production-ready ETLs
+Input: The task I have for you is creating that workflow usingt the instructions from the file prompt-exercise.txt. 
+the input data for this workflow can be found in the folder input_data.
+
+The way I want you achieve this is obviously following the instructions but I also want to create small documentation of the things you
+do and why you do them. Try to use the following tech stack:
+
+- snowflake for creating all the componentes of the database
+- jenkins for creating the CI/CD pipeline. This pipeline should create the database in snowflake. For setting the credentials, I want you
+to use an username and a password that I will manually write later. It should also lint the sql code.
+- dbt should be use to transform the data that should be ingested in snowflake. input_data could be considered as seeds for snowflake.
+
+Steps:
+1. Design the canonical data model to represent our client's data. I suggest using here a star schema here. So I want you to create
+the dimensions and facts using kimball's approach.
+2. Create the folder structure for this project using both jenkins, dbt and the sql files to create database resources related
+3. Documentation to check what kind of anomalies can be found in the input data.
+4. Use input_data files in snowflake in a landing zone. snowflake will store the data in a seed form without making any change to them. 
+5. Transform data in the landing zone using dbt. We could have a staging layer in which we do some transformation. From renaming tables,
+deleting duplicates and handling anomalies.
+6. Once our data is in a staging layer, create another layer called marts (or any name you find proper for this) that creates the dimensions
+and the fact tables.
+7. Create the documentation of the entire process. One document should provide the following items:
+    o Raw ingestion DDL
+    o Canonical DDL
+    o Transformation SQL
+    o Notes on how you handled anomalies
+8. Another documentation that explains the data modeling  used in this project. I want you to specify our fact and dimensions, what information
+can be found, how to use it, what particularities data has and what future improments could be done.
+
+Thank you

@@ -1,0 +1,63 @@
+name: 'nuaav_dw'
+version: '1.0.0'
+config-version: 2
+
+profile: 'nuaav_dw'
+
+# ---------------------------------------------------------------------------
+# Model paths
+# ---------------------------------------------------------------------------
+model-paths:      ["models"]
+seed-paths:       ["seeds"]
+test-paths:       ["tests"]
+analysis-paths:   ["analyses"]
+macro-paths:      ["macros"]
+snapshot-paths:   ["snapshots"]
+
+target-path:  "target"
+clean-targets: ["target", "dbt_packages"]
+
+# ---------------------------------------------------------------------------
+# Model configurations per layer
+# ---------------------------------------------------------------------------
+models:
+  nuaav_dw:
+
+    staging:
+      +materialized: view         # staging = lightweight views; no storage cost
+      +schema:       staging
+      +tags:         ['staging']  # Unified staging models service all clients (A, C, future)
+
+    marts:
+      +materialized: table        # marts = persisted tables for BI consumption
+      +schema:       marts
+
+      dimensions:
+        +tags: ['dim', 'marts']
+
+      facts:
+        +tags: ['fact', 'marts']
+
+# ---------------------------------------------------------------------------
+# Seed configurations
+# ---------------------------------------------------------------------------
+seeds:
+  nuaav_dw:
+    +schema: raw
+    +quote_columns: false
+    +on_schema_change: 'sync_all_columns'
+
+    client_a:
+      +tags: ['client_a', 'seed']
+      +column_types:
+        customer_id:   varchar
+        order_id:      varchar
+        sku:           varchar
+
+    client_c:
+      +tags: ['client_c', 'seed']
+      +column_types:
+        customer_id:   varchar
+        order_id:      varchar
+        payment_id:    varchar
+        sku:           varchar

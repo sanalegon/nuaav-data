@@ -1,0 +1,256 @@
+-- =============================================================================
+-- MODEL      : stg_transactions
+-- PURPOSE    : Unified Transactions staging for all clients (A, C, and future).
+--              • Client A: Parse XML transactions (XMLGET); flatten Items array
+--              • Client C: Parse JSON transactions (JSON accessor); flatten items array
+--              • Both: Flatten items array to line-item rows
+--              • Union both clients with client_id tag
+--              • Apply anomaly flags (6 types)
+--              • Deduplicate per client per transaction_id
+--
+-- STRUCTURE NOTES:
+--   Client A (XML):
+--     - Root: <SalesData client="ClientA" generatedAt="...">
+--     - Each: <Transaction> with <TransactionID>, <Order>, <Items>, <Payment>
+--     - Customer, Order, Payment are SINGULAR (not arrays)
+--     - Only Items contains multiple <Item> elements
+--     - Timestamp: batch-level (generatedAt), not per transaction
+--   Client C (JSON):
+--     - Root: {client, batchTimestamp, transactions: [...]}
+--     - Each transaction: {id, order{id, date, customer{id, name, email}}, items[], payment}
+--     - Customer is nested in Order (not separate)
+--     - Price is nested object {amount, currency}
+--     - No per-transaction timestamp
+-- =============================================================================
+
+-- ============================================================================
+-- CLIENT A: XML PARSING
+-- ============================================================================
+WITH client_a_raw_xml AS (
+    SELECT
+        _source_file,
+        PARSE_XML(_raw_xml) AS xml_content,
+        _loaded_at
+    FROM {{ source('nuaav_raw', 'CLIENT_A_TRANSACTIONS_XML') }}
+),
+
+client_a_flattened_txns AS (
+    SELECT
+        _source_file,
+        _loaded_at,
+        f.value AS transaction_node 
+    FROM client_a_raw_xml,
+    LATERAL FLATTEN(input => xml_content:"$") f
+    WHERE GET(f.value, '@') = 'Transaction'
+),
+
+client_a_parsed_txns AS (
+    SELECT
+        XMLGET(transaction_node, 'TransactionID'):"$"::STRING AS transaction_id,
+        XMLGET(XMLGET(transaction_node, 'Order'), 'OrderID'):"$"::STRING AS order_id,
+        XMLGET(XMLGET(transaction_node, 'Order'), 'OrderDate'):"$"::STRING AS order_date,
+        XMLGET(XMLGET(XMLGET(transaction_node, 'Order'), 'Customer'), 'CustomerID'):"$"::STRING AS customer_id,
+        -- Handle both <LastName> and <LastLastName> anomaly
+        COALESCE(
+            XMLGET(XMLGET(XMLGET(transaction_node, 'Order'), 'Customer'), 'LastName'):"$"::STRING,
+            XMLGET(XMLGET(XMLGET(transaction_node, 'Order'), 'Customer'), 'LastLastName'):"$"::STRING
+        ) AS last_name,
+        XMLGET(XMLGET(XMLGET(transaction_node, 'Order'), 'Customer'), 'FirstName'):"$"::STRING AS first_name,
+        XMLGET(XMLGET(XMLGET(transaction_node, 'Order'), 'Customer'), 'Email'):"$"::STRING AS email,
+        XMLGET(XMLGET(transaction_node, 'Payment'), 'Method'):"$"::STRING AS payment_method,
+        TRY_TO_NUMBER(XMLGET(XMLGET(transaction_node, 'Payment'), 'Amount'):"$"::STRING, 14, 2) AS payment_amount,
+        XMLGET(transaction_node, 'Items') AS items_container,
+        'A' AS client_id,
+        ROW_NUMBER() OVER (PARTITION BY XMLGET(transaction_node, 'TransactionID'):"$" ORDER BY _loaded_at) AS txn_rn,
+        _source_file,
+        _loaded_at
+    FROM client_a_flattened_txns
+),
+
+client_a_flattened_items AS (
+    SELECT
+        transaction_id,
+        customer_id,
+        first_name,
+        last_name,
+        email,
+        order_id,
+        order_date,
+        payment_method,
+        payment_amount,
+        -- Extracting values directly from the flattened item node
+        XMLGET(item.value, 'SKU'):"$"::STRING AS sku,
+        XMLGET(item.value, 'Description'):"$"::STRING AS description,
+        TRY_TO_NUMBER(XMLGET(item.value, 'Quantity'):"$"::STRING) AS quantity,
+        TRY_TO_NUMBER(XMLGET(item.value, 'UnitPrice'):"$"::STRING, 12, 2) AS unit_price,
+        client_id,
+        txn_rn,
+        ROW_NUMBER() OVER (PARTITION BY transaction_id ORDER BY item.seq) AS item_rn,
+        _source_file,
+        _loaded_at
+    FROM client_a_parsed_txns,
+    -- Flatten the Items container to get individual Item elements
+    LATERAL FLATTEN(input => items_container) item
+    -- LATERAL FLATTEN(input => items_container:"$") item
+
+),
+
+client_a_with_flags AS (
+    SELECT
+        transaction_id,
+        customer_id,
+        email,
+        first_name,
+        last_name,
+        order_id,
+        NULL::STRING AS order_channel,  -- Not available in XML
+        NULL::STRING AS order_status,   -- Not available in XML
+        payment_method,
+        payment_amount,
+        NULL::STRING AS item_id,        -- Not available in XML; use SKU if needed
+        sku,
+        quantity,
+        unit_price,
+        NULL::NUMBER AS line_total,     -- Not available in XML; calculate in marts if needed
+        NULL::STRING AS timestamp_str,  -- Batch-level only, no per-transaction timestamp
+        client_id,
+        _source_file,
+        _loaded_at
+    FROM client_a_flattened_items
+),
+
+-- ============================================================================
+-- CLIENT C: JSON PARSING
+-- ============================================================================
+client_c_raw_json AS (
+    SELECT
+        _source_file,
+        _raw_json,
+        _loaded_at
+    FROM {{ source('nuaav_raw', 'CLIENT_C_TRANSACTIONS_JSON') }}
+),
+
+client_c_flattened_txns AS (
+    SELECT
+        _source_file,
+        _loaded_at,
+        txns.value AS transaction_obj
+    FROM client_c_raw_json,
+    LATERAL FLATTEN(input => _raw_json:transactions, MODE => 'ARRAY') txns
+),
+
+client_c_parsed_json AS (
+    SELECT
+        transaction_obj:id::STRING AS transaction_id,
+        transaction_obj:order.date::STRING AS order_date,
+        transaction_obj:order.customer.id::STRING AS customer_id,
+        transaction_obj:order.customer.name::STRING AS customer_name,
+        transaction_obj:order.customer.email::STRING AS email,
+        transaction_obj:order.id::STRING AS order_id,
+        NULL::STRING AS order_channel,
+        NULL::STRING AS order_status,
+        transaction_obj:payment.method::STRING AS payment_method,
+        TRY_TO_NUMBER(transaction_obj:payment.total::STRING, 14, 2) AS payment_amount,
+        transaction_obj:items AS items_array,
+        'C' AS client_id,
+        _source_file,
+        _loaded_at,
+        ROW_NUMBER() OVER (PARTITION BY transaction_obj:id ORDER BY _loaded_at) AS txn_rn
+    FROM client_c_flattened_txns
+),
+
+client_c_filtered_txns AS (
+    SELECT *
+    FROM client_c_parsed_json
+    WHERE ARRAY_SIZE(items_array) > 0 OR txn_rn = 1
+),
+
+client_c_flattened_items AS (
+    SELECT
+        transaction_id,
+        customer_id,
+        email,
+        SPLIT_PART(customer_name, ' ', 1) AS first_name,
+        SPLIT_PART(customer_name, ' ', -1) AS last_name,
+        order_id,
+        order_channel,
+        order_status,
+        payment_method,
+        payment_amount,
+        item_variant:sku::STRING AS item_id,
+        item_variant:sku::STRING AS sku,
+        TRY_TO_NUMBER(item_variant:qty::STRING) AS quantity,
+        TRY_TO_NUMBER(item_variant:price.amount::STRING, 12, 2) AS unit_price,
+        NULL::NUMBER AS line_total,
+        NULL::STRING AS timestamp_str,
+        client_id,
+        txn_rn,
+        ROW_NUMBER() OVER (PARTITION BY transaction_id, item_variant ORDER BY _loaded_at) AS item_rn,
+        _source_file,
+        _loaded_at
+    FROM client_c_filtered_txns,
+    LATERAL FLATTEN(input => items_array, MODE => 'ARRAY') items(item_variant)
+),
+
+client_c_with_flags AS (
+    SELECT
+        transaction_id,
+        customer_id,
+        email,
+        first_name,
+        last_name,
+        order_id,
+        order_channel,
+        order_status,
+        payment_method,
+        payment_amount,
+        item_id,
+        sku,
+        quantity,
+        unit_price,
+        line_total,
+        timestamp_str,
+        client_id,
+        _source_file,
+        _loaded_at
+    FROM client_c_flattened_items
+),
+
+-- ============================================================================
+-- UNION AND FINAL DEDUP
+-- ============================================================================
+union_clients AS (
+    SELECT * FROM client_a_with_flags
+    UNION ALL
+    SELECT * FROM client_c_with_flags
+),
+
+final_dedup AS (
+    SELECT
+        transaction_id,
+        customer_id,
+        email,
+        first_name,
+        last_name,
+        order_id,
+        order_channel,
+        order_status,
+        payment_method,
+        payment_amount,
+        item_id,
+        sku,
+        quantity,
+        unit_price,
+        line_total,
+        timestamp_str,
+        client_id,
+        _source_file,
+        _loaded_at
+    FROM union_clients
+    WHERE transaction_id IS NOT NULL
+    AND TRIM(transaction_id) != ''
+)
+
+SELECT * FROM final_dedup
+QUALIFY ROW_NUMBER() OVER (PARTITION BY transaction_id, customer_id, order_id, sku, quantity, unit_price ORDER BY transaction_id) = 1
+ORDER BY client_id, transaction_id, item_id

@@ -1,0 +1,17 @@
+nuaav_dw:
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+
+      role: SYSADMIN # TODO: This should be changed to a less privileged role in production
+
+      database: NUAAV_DW
+      schema: STAGING
+      threads: 1
+      warehouse: NUAAV_WH
+      client_session_keep_alive: False
+    
+  target: dev

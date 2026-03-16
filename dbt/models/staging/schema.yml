@@ -1,0 +1,242 @@
+version: 2
+
+# =============================================================================
+# STAGING LAYER – Unified Models
+# =============================================================================
+# All staging models follow the pattern: clean raw data, flatten semi-structured
+# data (XML/JSON), deduplicate on natural key, and flag anomalies.
+# Client identification via 'client_id' column enables future scaling.
+#
+# Materialization: VIEWS (lightweight, no storage cost)
+#
+
+sources:
+  - name: nuaav_raw
+    description: "Raw landing zone (zero transformation) from Snowflake NUAAV_DW.RAW schema. All data ingested via COPY INTO from S3 external stages."
+    database: NUAAV_DW
+    schema: RAW
+    tables:
+      - name: CLIENT_A_CUSTOMERS
+        description: "Raw Client A customers from Customer.csv (COPY INTO from S3)"
+      - name: CLIENT_A_ORDERS
+        description: "Raw Client A orders from Orders.csv (COPY INTO from S3)"
+      - name: CLIENT_A_PRODUCTS
+        description: "Raw Client A products from Products.csv (COPY INTO from S3)"
+      - name: CLIENT_A_TRANSACTIONS_XML
+        description: "Raw Client A transactions from XML files (COPY INTO from S3)"
+      - name: CLIENT_C_CUSTOMERS
+        description: "Raw Client C customers from Client B/Customer.CSV (COPY INTO from S3)"
+      - name: CLIENT_C_ORDERS
+        description: "Raw Client C orders from Client B/Order.csv (COPY INTO from S3)"
+      - name: CLIENT_C_PRODUCTS
+        description: "Raw Client C products from Client B/Product.csv (COPY INTO from S3)"
+      - name: CLIENT_C_PAYMENTS
+        description: "Raw Client C payments from Client B/Payments.csv (COPY INTO from S3)"
+      - name: CLIENT_C_TRANSACTIONS_JSON
+        description: "Raw Client C transactions from Client B/transactions.json (COPY INTO from S3)"
+
+models:
+  - name: stg_customer
+    description: >
+      Unified customer staging for all clients (A, C, future-ready).
+      Client A: straightforward rename + loyalty tier handling.
+      Client C: splits CUSTOMER_NAME into first/last, maps segment to canonical tier (PLATINUM/SILVER/BRONZE/UNKNOWN).
+      Deduplicated per client per customer_id.
+      Grain: 1 row per customer_id per client.
+    columns:
+      - name: customer_id
+        description: "Customer identifier (client-prefixed: CUST-A-*, C-CUST-*)"
+        data_type: varchar
+      - name: first_name
+        description: "Customer first name"
+        data_type: varchar
+      - name: last_name
+        description: "Customer last name"
+        data_type: varchar
+      - name: email
+        description: "Customer email address"
+        data_type: varchar
+      - name: loyalty_tier
+        description: "Canonical loyalty tier (VIP/REGULAR/NEW → PLATINUM/SILVER/BRONZE/UNKNOWN)"
+        data_type: varchar
+      - name: signup_source
+        description: "Source channel of customer signup (Client A only; NULL for Client C)"
+        data_type: varchar
+      - name: is_active
+        description: "Active status (TRUE/FALSE/NULL)"
+        data_type: boolean
+      - name: is_email_valid
+        description: "TRUE if email matches pattern user@domain.tld; FALSE otherwise"
+        data_type: boolean
+      - name: client_id
+        description: "Client identifier (A, C, etc.); enables multi-tenant queries and future scaling"
+        data_type: varchar
+      - name: _loaded_at
+        description: "Record load timestamp from RAW table"
+        data_type: timestamp_ntz
+
+  - name: stg_orders
+    description: >
+      Unified order staging for all clients (A, C, future-ready).
+      Client A: strips inline annotation comments from CHANNEL field (e.g. '  <-- bad customer').
+      Client C: no special handling (no CHANNEL field; NULL for compatibility).
+      Validates order_date format and checks customer_id references.
+      Deduplicated per client per order_id.
+      Grain: 1 row per order_id per client.
+    columns:
+      - name: order_id
+        description: "Order identifier (client-prefixed: ORD-*, C-ORD-*)"
+        data_type: varchar
+      - name: customer_id
+        description: "Customer identifier (may be orphaned if FK validation fails in marts)"
+        data_type: varchar
+      - name: order_date
+        description: "Order date (YYYY-MM-DD format)"
+        data_type: varchar
+      - name: order_status
+        description: "Order status (e.g., COMPLETED, PENDING)"
+        data_type: varchar
+      - name: channel
+        description: "Order channel (Web, Mobile, etc.); NULL for Client C. Client A values have annotations stripped."
+        data_type: varchar
+      - name: has_missing_date
+        description: "TRUE if order_date is NULL or cannot be parsed as YYYY-MM-DD"
+        data_type: boolean
+      - name: has_invalid_ref
+        description: "TRUE if customer_id is NULL/empty (orphan order)"
+        data_type: boolean
+      - name: is_duplicate
+        description: "TRUE if this order_id appears multiple times in source (always FALSE post-dedup)"
+        data_type: boolean
+      - name: client_id
+        description: "Client identifier (A, C, etc.)"
+        data_type: varchar
+      - name: _loaded_at
+        description: "Record load timestamp from RAW table"
+        data_type: timestamp_ntz
+
+  - name: stg_products
+    description: >
+      Unified product staging for all clients (A, C, future-ready).
+      Validates unit_price and flags invalid prices (≤ 0 or NULL).
+      Deduplicated per client per SKU.
+      Grain: 1 row per SKU per client.
+    columns:
+      - name: sku
+        description: "Stock keeping unit identifier (client-prefixed: SKU-A-*, C-SKU-*)"
+        data_type: varchar
+      - name: product_name
+        description: "Product name"
+        data_type: varchar
+      - name: category
+        description: "Product category"
+        data_type: varchar
+      - name: unit_price
+        description: "Unit price (NUMBER 12,2); NULL if unparseable"
+        data_type: number
+      - name: currency
+        description: "Currency code (e.g., USD)"
+        data_type: varchar
+      - name: is_active
+        description: "Active status (TRUE/FALSE/NULL)"
+        data_type: boolean
+      - name: is_price_valid
+        description: "FALSE if unit_price is NULL or ≤ 0; TRUE otherwise. Revenue metrics should filter on TRUE."
+        data_type: boolean
+      - name: client_id
+        description: "Client identifier (A, C, etc.)"
+        data_type: varchar
+      - name: _loaded_at
+        description: "Record load timestamp from RAW table"
+        data_type: timestamp_ntz
+
+  - name: stg_transactions
+    description: >
+      Unified transaction staging for all clients (A, C, future-ready).
+      Client A: parses XML with XMLGET; flattens items array using LATERAL FLATTEN.
+      Client C: parses JSON with JSON accessor (:field); flattens items array using LATERAL FLATTEN.
+      Applies 6 anomaly flags across both clients for consistent data quality signaling.
+      Deduplicated per client per transaction_id.
+      Grain: 1 row per item per transaction per client.
+    columns:
+      - name: transaction_id
+        description: "Transaction identifier (client-prefixed: TXN-*, C-TXN-*)"
+        data_type: varchar
+      - name: customer_id
+        description: "Customer identifier from transaction envelope"
+        data_type: varchar
+      - name: email
+        description: "Customer email from transaction"
+        data_type: varchar
+      - name: first_name
+        description: "Customer first name from transaction"
+        data_type: varchar
+      - name: last_name
+        description: "Customer last name from transaction"
+        data_type: varchar
+      - name: order_id
+        description: "Order identifier from transaction; validates FK to stg_orders in marts"
+        data_type: varchar
+      - name: order_date
+        description: "Order date from transaction"
+        data_type: varchar
+      - name: payment_method
+        description: "Payment method (CreditCard, PayPal, BankTransfer, etc.)"
+        data_type: varchar
+      - name: payment_amount
+        description: "Payment amount (NUMBER 14,2)"
+        data_type: number
+      - name: sku
+        description: "Product SKU"
+        data_type: varchar
+      - name: quantity
+        description: "Item quantity"
+        data_type: number
+      - name: unit_price
+        description: "Item unit price (NUMBER 12,2)"
+        data_type: number
+      - name: client_id
+        description: "Client identifier (A, C, etc.)"
+        data_type: varchar
+      - name: _source_file
+        description: "Source XML/JSON file name"
+        data_type: varchar
+      - name: _loaded_at
+        description: "Record load timestamp from RAW table"
+        data_type: timestamp_ntz
+
+  - name: stg_payments
+    description: >
+      Unified payment staging for all clients (Client C currently available; future-ready).
+      Smart negative amount flagging: negative is valid if status=REFUNDED.
+      Zero amounts flagged if status not in (REFUNDED, CANCELLED).
+      Deduplicated per client per payment_id.
+      Grain: 1 row per payment_id per client.
+    columns:
+      - name: payment_id
+        description: "Payment identifier (Client C format: PAY-C-*)"
+        data_type: varchar
+      - name: order_id
+        description: "Associated order identifier"
+        data_type: varchar
+      - name: payment_method
+        description: "Payment method (CreditCard, PayPal, BankTransfer, etc.)"
+        data_type: varchar
+      - name: amount
+        description: "Payment amount (NUMBER 14,2); negative for refunds"
+        data_type: number
+      - name: currency
+        description: "Currency code (e.g., USD)"
+        data_type: varchar
+      - name: status
+        description: "Payment status (SETTLED, REFUNDED, CANCELLED, etc.)"
+        data_type: varchar
+      - name: has_negative_amt
+        description: "TRUE if amount < 0 and status ≠ REFUNDED; or amount = 0 and status not in (REFUNDED, CANCELLED)"
+        data_type: boolean
+      - name: client_id
+        description: "Client identifier (C, etc.)"
+        data_type: varchar
+      - name: _loaded_at
+        description: "Record load timestamp from RAW table"
+        data_type: timestamp_ntz

@@ -1,0 +1,40 @@
+sku,product_name,category,unit_price,currency,is_active
+
+SKU-A-001,Wireless Mouse,Accessories,25.99,USD,true
+SKU-A-002,Keyboard,Accessories,45.50,USD,true
+SKU-A-003,USB-C Charger,Chargers,19.99,USD,true
+SKU-A-004,Screen Protector,Accessories,9.99,USD,true
+SKU-A-005,Gaming Headset,Audio,79.99,USD,false
+SKU-A-006,Portable SSD,Storage,89.99,USD,true
+SKU-A-007,HDMI Cable,Cables,8.99,USD,true
+SKU-A-008,USB Cable,Cables,5.99,USD,true
+SKU-A-009,Webcam,Electronics,49.99,USD,true
+SKU-A-010,Wireless Charger,Chargers,29.99,USD,true
+SKU-A-011,Mouse Pad,Accessories,-9.99,USD,true
+SKU-A-012,Bluetooth Keyboard,Accessories,39.99,USD,true
+SKU-A-013,Phone Stand,Accessories,14.99,USD,true
+SKU-A-014,USB Hub,Accessories,24.99,USD,true
+SKU-A-015,Desk Lamp,Home Office,34.99,USD,true
+SKU-A-016,Wireless Earbuds,Audio,59.99,USD,true
+SKU-A-017,Smartwatch Band,Accessories,12.99,USD,true
+SKU-A-018,Phone Case,Accessories,14.99,USD,true
+SKU-A-019,Bluetooth Tracker,Electronics,29.99,USD,true
+SKU-A-020,Desk Organizer,Home Office,19.99,USD,true
+SKU-A-021,LED Strip Lights,Lighting,22.99,USD,true
+SKU-A-022,USB Microphone,Audio,59.99,USD,true
+SKU-A-023,Screen Protector Pack,Accessories,12.49,USD,true
+SKU-A-024,Smart Plug,Electronics,14.99,USD,true
+SKU-A-025,Portable Fan,Home Office,19.99,USD,true
+SKU-A-026,Charging Cable,Cables,7.99,USD,true
+SKU-A-027,Desk Mat,Accessories,17.99,USD,true
+SKU-A-028,Wireless Presenter,Electronics,34.99,USD,true
+SKU-A-029,Stylus Pen,Accessories,12.99,USD,true
+SKU-A-030,USB Dock,Electronics,49.99,USD,true
+SKU-A-031,Phone Grip,Accessories,9.99,USD,true
+SKU-A-032,Desk Shelf,Storage,39.99,USD,true
+SKU-A-033,LED Desk Lamp,Lighting,24.99,USD,true
+SKU-A-034,Monitor Riser,Home Office,29.99,USD,true
+SKU-A-035,Cable Organizer,Accessories,11.99,USD,true
+SKU-A-036,Screen Cleaner Kit,Home Office,8.99,USD,true
+SKU-A-037,USB Extension Hub,Electronics,16.99,USD,true
+SKU-A-038,Keyboard Cover,Accessories,9.99,USD,true

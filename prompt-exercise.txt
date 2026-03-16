@@ -1,0 +1,37 @@
+Candidate Prompt
+
+Offline Coding Exercise — Financial Data Ingestion &amp; Canonical Modeling
+
+We receive financial transaction data from multiple customers in different formats (CSV,
+XML, JSON). These files often contain data quality issues, such as:
+
+- Duplicate transactions
+- Missing or null fields
+- Unexpected extra fields
+- Negative quantities or amounts
+- Inconsistent nesting structures
+
+Your task is to simulate how you would ingest these files into Snowflake using SQL
+only (no Python or external ETL tools).
+
+Your Assignment
+
+You are provided with three sample files:
+
+1. A complex, nested XML file
+2. A nested JSON file
+3. A CSV file
+
+Each file contains intentional anomalies.
+
+What you need to do
+
+1. Ingest each file into Snowflake using SQL.
+2. Design a canonical data model that can represent all three clients’ data.
+3. Transform the raw data into the canonical structure.
+4. Identify and handle anomalies (duplicates, nulls, invalid values).
+5. Provide:
+    o Raw ingestion DDL
+    o Canonical DDL
+    o Transformation SQL
+    o Notes on how you handled anomalies
