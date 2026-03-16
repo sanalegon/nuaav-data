@@ -1,0 +1,55 @@
+# dbt artifacts and build outputs
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/manifest.json
+dbt/run_results.json
+
+# dbt profiles (NEVER commit credentials!)
+dbt/profiles.yml
+~/.dbt/profiles.yml
+
+# Python environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Input data (if large, optional - remove if you want to track source files)
+# input_data/
+
+# Backup and archive files
+*.backup
+*.zip
+*.tar.gz
+*.bak
+
+# OS specific
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.log
+
+# Snowflake (if using snowsql locally)
+.snowsqlrc
+snowsql_config.json
